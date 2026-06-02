@@ -1,0 +1,582 @@
+use nineam_class;
+-- 1. Client wants unique order sequence for each customer.
+SELECT * ,
+ROW_NUMBER() OVER (ORDER BY ORDER_DATE) AS UNIQUE_ROW
+FROM assignment_ecommerce_orders;
+
+-- 2. Management wants customer sales ranking
+SELECT CUSTOMER_NAME ,ORDER_DATE,SALES_AMOUNT,
+          DENSE_RANK() OVER (ORDER BY SALES_AMOUNT DESC) AS UNIQUE_ROW
+FROM assignment_ecommerce_orders;
+
+-- 3. Client wants to identify customers whose current purchase is higher than previous purchase.
+SELECT * 
+FROM (
+SELECT CUSTOMER_NAME,SALES_AMOUNT AS CURRENT_PURCHASE,ORDER_DATE,
+	 LAG(SALES_AMOUNT) OVER (ORDER BY ORDER_DATE) AS PREV_PURCHASE
+FROM assignment_ecommerce_orders
+) A
+WHERE CURRENT_PURCHASE > PREV_PURCHASE;
+
+-- 4. Finance team wants Month-over-Month sales growth percentage.
+SELECT 
+    MONTH_NUM,MONTHLY_SALES,PREV_MONTH_SALES,
+ROUND(((MONTHLY_SALES - PREV_MONTH_SALES)/ PREV_MONTH_SALES) * 100,2) AS MOM_GROWTH_PERCENT
+FROM
+(
+    SELECT MONTH(ORDER_DATE) AS MONTH_NUM,SUM(SALES_AMOUNT) AS MONTHLY_SALES,
+             LAG(SUM(SALES_AMOUNT)) OVER(ORDER BY MONTH(ORDER_DATE)) AS PREV_MONTH_SALES
+FROM assignment_ecommerce_orders
+GROUP BY MONTH(ORDER_DATE)
+) A;
+
+-- 5. Management wants to identify the top revenue-generating customer every quarter.
+SELECT *
+FROM
+(
+    SELECT CUSTOMER_NAME,QUARTER(ORDER_DATE) AS QUARTER_NUM,SUM(SALES_AMOUNT) AS TOTAL_REVENUE,
+           RANK() OVER(PARTITION BY QUARTER(ORDER_DATE) ORDER BY SUM(SALES_AMOUNT) DESC) AS RNK
+	FROM assignment_ecommerce_orders
+    GROUP BY CUSTOMER_NAME,QUARTER(ORDER_DATE)
+) A
+WHERE RNK = 1;
+
+-- 6. Client wants running cumulative sales for dashboard trend analysis.
+SELECT CUSTOMER_NAME,ORDER_DATE,SALES_AMOUNT,
+       SUM(SALES_AMOUNT) OVER(PARTITION BY CUSTOMER_NAME ORDER BY ORDER_DATE) AS RUNNING_CUM_SALES
+FROM assignment_ecommerce_orders;
+
+-- 7. Sales team wants to compare each month sales with previous month sales.
+SELECT CUSTOMER_NAME,SALES_AMOUNT AS CURRENT_PURCHASE,MONTH(ORDER_DATE) AS MONTH_NUM,
+     SALES_AMOUNT -
+	 LAG(SALES_AMOUNT) OVER (ORDER BY ORDER_DATE) AS PREV_PURCHASE
+FROM assignment_ecommerce_orders;
+
+-- 8. Marketing team wants customers divided into 4 spending groups.
+SELECT *,
+	 NTILE(4) OVER (ORDER BY SALES_AMOUNT DESC) AS SPENDING_GROUPS
+FROM assignment_ecommerce_orders;
+
+-- 9. Client wants to identify repeat product purchases.
+SELECT PRODUCT_NAME,
+       COUNT(*) AS TOTAL_ORDERS
+FROM assignment_ecommerce_orders
+GROUP BY PRODUCT_NAME
+HAVING COUNT(*) > 1;
+
+
+-- 10. Client wants to identify highest sales month every year.
+SELECT *
+FROM
+(
+    SELECT YEAR(ORDER_DATE) AS YEAR_NUM,MONTH(ORDER_DATE) AS MONTH_NUM,SUM(SALES_AMOUNT) AS TOTAL_SALES,
+         RANK() OVER(PARTITION BY YEAR(ORDER_DATE) ORDER BY SUM(SALES_AMOUNT) DESC) AS RNK
+    FROM assignment_ecommerce_orders
+    GROUP BY YEAR(ORDER_DATE), MONTH(ORDER_DATE)
+) A
+WHERE RNK = 1;
+
+-- 11. Finance wants rolling 3-month average revenue.
+SELECT MONTH(ORDER_DATE) AS MONTH_NUM,SUM(SALES_AMOUNT) AS MONTHLY_REVENUE,
+        ROUND(AVG(SUM(SALES_AMOUNT)) OVER(ORDER BY MONTH(ORDER_DATE)ROWS BETWEEN 2 PRECEDING AND CURRENT ROW)) AS ROLLING_3MONTH_AVG
+FROM assignment_ecommerce_orders
+GROUP BY MONTH(ORDER_DATE);
+
+-- 12. Client wants to identify customers contributing revenue.
+SELECT CUSTOMER_NAME,SUM(SALES_AMOUNT) AS TOTAL_REVENUE
+FROM assignment_ecommerce_orders
+GROUP BY CUSTOMER_NAME
+ORDER BY TOTAL_REVENUE DESC;
+
+-- 13. Client wants to compare current quarter sales with previous quarter sales.
+SELECT QUARTER_NUM,QUARTER_SALES,
+               LAG(QUARTER_SALES) OVER(ORDER BY QUARTER_NUM) AS PREV_QUARTER_SALES
+FROM
+(
+    SELECT QUARTER(ORDER_DATE) AS QUARTER_NUM,SUM(SALES_AMOUNT) AS QUARTER_SALES
+    FROM assignment_ecommerce_orders
+    GROUP BY QUARTER(ORDER_DATE)
+) A;
+
+-- 14. Operations team wants weekly sales trend analysis.
+SELECT WEEK(ORDER_DATE) AS WEEK_NUM,SUM(SALES_AMOUNT) AS WEEKLY_SALES
+FROM assignment_ecommerce_orders
+GROUP BY WEEK(ORDER_DATE);
+
+-- 15. Client wants first and latest purchase amount of every customer.
+SELECT CUSTOMER_NAME,
+    FIRST_VALUE(SALES_AMOUNT)OVER(PARTITION BY CUSTOMER_NAME ORDER BY ORDER_DATE) AS FIRST_PURCHASE,
+    LAST_VALUE(SALES_AMOUNT)OVER(PARTITION BY CUSTOMER_NAME ORDER BY ORDER_DATE ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS LAST_PURCHASE
+FROM assignment_ecommerce_orders;
+
+-- 16. Business wants to identify the fastest growing month.
+SELECT *
+FROM
+(
+    SELECT MONTH(ORDER_DATE) AS MONTH_NUM,SUM(SALES_AMOUNT) AS MONTHLY_SALES,
+        SUM(SALES_AMOUNT) -LAG(SUM(SALES_AMOUNT)) OVER(ORDER BY MONTH(ORDER_DATE)) AS GROWTH
+    FROM assignment_ecommerce_orders
+    GROUP BY MONTH(ORDER_DATE)
+) A
+ORDER BY GROWTH DESC
+LIMIT 1;
+
+-- 17. Client wants top 3 products in every category.
+SELECT *
+FROM
+(
+    SELECT CATEGORY,PRODUCT_NAME,SALES_AMOUNT,
+        RANK() OVER(PARTITION BY CATEGORY ORDER BY SALES_AMOUNT DESC) AS RNK
+FROM assignment_ecommerce_orders
+) A
+WHERE RNK <= 3;
+
+-- 18. Management wants YoY growth trend.
+SELECT YEAR(ORDER_DATE) AS YEAR_NUM,SUM(SALES_AMOUNT) AS YEARLY_SALES,
+      LAG(SUM(SALES_AMOUNT)) OVER(ORDER BY YEAR(ORDER_DATE)) AS PREV_YEAR_SALES
+FROM assignment_ecommerce_orders
+GROUP BY YEAR(ORDER_DATE);
+
+-- 19. Client wants to identify inactive customers. (WHO DIDNT PURCHASE IN LAST 30DAYS)
+SELECT DISTINCT CUSTOMER_NAME
+FROM assignment_ecommerce_orders
+WHERE CUSTOMER_NAME NOT IN
+(
+    SELECT CUSTOMER_NAME
+    FROM assignment_ecommerce_orders
+    WHERE ORDER_DATE >= CURDATE() - INTERVAL 30 DAY
+);
+
+-- 20. Business wants customers whose purchases continuously decreased.
+SELECT *
+FROM
+(
+    SELECT CUSTOMER_NAME,ORDER_DATE,SALES_AMOUNT,
+          LAG(SALES_AMOUNT) OVER(PARTITION BY CUSTOMER_NAME ORDER BY ORDER_DATE) AS PREV_PURCHASE
+    FROM assignment_ecommerce_orders
+) A
+WHERE SALES_AMOUNT < PREV_PURCHASE;
+
+-- 21. Find customers whose purchases dropped continuously 3 times
+SELECT *
+FROM
+(
+    SELECT CUSTOMER_NAME,ORDER_DATE,SALES_AMOUNT,
+           LAG(SALES_AMOUNT,1)OVER(PARTITION BY CUSTOMER_NAME ORDER BY ORDER_DATE) AS PREV1,
+           LAG(SALES_AMOUNT,2)OVER(PARTITION BY CUSTOMER_NAME ORDER BY ORDER_DATE) AS PREV2
+    FROM assignment_ecommerce_orders
+) A
+WHERE SALES_AMOUNT < PREV1 AND PREV1 < PREV2;
+
+-- 22. FIND LOWEST PROFIT CATEGORY
+SELECT CATEGORY,SUM(PROFIT) AS TOTAL_PROFIT
+FROM assignment_ecommerce_orders
+GROUP BY CATEGORY
+ORDER BY TOTAL_PROFIT
+LIMIT 1;
+
+-- 23. FIND THE MOST PROFITABLE PRODUCT
+SELECT PRODUCT_NAME,SUM(PROFIT) AS TOTAL_PROFIT
+FROM assignment_ecommerce_orders
+GROUP BY PRODUCT_NAME
+ORDER BY TOTAL_PROFIT DESC
+LIMIT 1;
+
+-- 24. FIND CUSTOMERS ABOVE AVERAGE SALES
+SELECT *
+FROM
+(
+    SELECT CUSTOMER_NAME,SALES_AMOUNT,
+         ROUND(AVG(SALES_AMOUNT) OVER(PARTITION BY CUSTOMER_NAME)) AS AVG_SALES
+    FROM assignment_ecommerce_orders
+) A
+WHERE SALES_AMOUNT > AVG_SALES;
+
+-- 25. Fetch customers whose sales are greater than their region average sales.
+SELECT *
+FROM
+(
+    SELECT CUSTOMER_NAME,CITY,SALES_AMOUNT,
+           ROUND(AVG(SALES_AMOUNT) OVER(PARTITION BY CITY)) AS CITY_AVG
+    FROM assignment_ecommerce_orders
+) A
+WHERE SALES_AMOUNT > CITY_AVG;
+
+-- 26. Fetch products whose sales are higher than category average sales.
+SELECT *
+FROM
+(
+    SELECT PRODUCT_NAME,CATEGORY,SALES_AMOUNT,
+           ROUND(AVG(SALES_AMOUNT) OVER(PARTITION BY CATEGORY)) AS CATEGORY_AVG
+    FROM assignment_ecommerce_orders
+) A
+WHERE SALES_AMOUNT > CATEGORY_AVG;
+
+-- 27. Fetch customers whose latest purchase is greater than their average purchase.
+SELECT *
+FROM
+(
+    SELECT CUSTOMER_NAME,SALES_AMOUNT,
+           ROUND(AVG(SALES_AMOUNT) OVER(PARTITION BY CUSTOMER_NAME)) AS AVG_PURCHASE,
+		   ROW_NUMBER() OVER(PARTITION BY CUSTOMER_NAME ORDER BY ORDER_DATE DESC) AS RNK
+    FROM assignment_ecommerce_orders
+) A
+WHERE RNK = 1 AND SALES_AMOUNT > AVG_PURCHASE;
+
+-- 28. Fetch months where sales are higher than overall average monthly sales.
+SELECT *
+FROM
+(
+    SELECT MONTH(ORDER_DATE) AS MONTH_NUM,SUM(SALES_AMOUNT) AS MONTHLY_SALES
+    FROM assignment_ecommerce_orders
+    GROUP BY MONTH(ORDER_DATE)
+) A
+WHERE MONTHLY_SALES >
+(
+    SELECT AVG(MONTHLY_TOTAL)
+    FROM
+    (
+        SELECT SUM(SALES_AMOUNT) AS MONTHLY_TOTAL
+        FROM assignment_ecommerce_orders
+        GROUP BY MONTH(ORDER_DATE)
+    ) B
+);
+
+-- 29. Fetch categories contributing more than 25% of total sales.
+SELECT CATEGORY,SUM(SALES_AMOUNT) AS CATEGORY_SALES,
+       ROUND(SUM(SALES_AMOUNT)*100/
+       (SELECT SUM(SALES_AMOUNT)
+        FROM assignment_ecommerce_orders),2)
+       AS CONTRIBUTION_PERCENT
+FROM assignment_ecommerce_orders
+GROUP BY CATEGORY
+HAVING CONTRIBUTION_PERCENT > 25;
+
+-- 30. Fetch customers whose current purchase is less than previous purchase.
+SELECT *
+FROM
+(
+    SELECT CUSTOMER_NAME,ORDER_DATE,SALES_AMOUNT,
+           LAG(SALES_AMOUNT) OVER(PARTITION BY CUSTOMER_NAME ORDER BY ORDER_DATE) AS PREV_PURCHASE
+    FROM assignment_ecommerce_orders
+) A
+WHERE SALES_AMOUNT < PREV_PURCHASE;
+
+-- 31. Fetch top-selling product from each category.
+SELECT *
+FROM
+(
+    SELECT CATEGORY,PRODUCT_NAME,SUM(SALES_AMOUNT) AS TOTAL_SALES,
+           RANK() OVER(PARTITION BY CATEGORY ORDER BY SUM(SALES_AMOUNT) DESC) AS RNK
+    FROM assignment_ecommerce_orders
+    GROUP BY CATEGORY, PRODUCT_NAME
+) A
+WHERE RNK = 1;
+
+-- 32. Fetch customers whose purchase count is greater than average purchase count.
+SELECT *
+FROM
+(
+    SELECT CUSTOMER_NAME,COUNT(*) AS PURCHASE_COUNT
+    FROM assignment_ecommerce_orders
+    GROUP BY CUSTOMER_NAME
+) A
+WHERE PURCHASE_COUNT >
+(
+    SELECT AVG(CNT)
+    FROM
+    (
+        SELECT COUNT(*) AS CNT
+        FROM assignment_ecommerce_orders
+        GROUP BY CUSTOMER_NAME
+    ) B
+);
+
+-- 33. Fetch regions whose total sales are below overall regional average.
+SELECT CITY,SUM(SALES_AMOUNT) AS REGION_SALES
+FROM assignment_ecommerce_orders
+GROUP BY CITY
+HAVING REGION_SALES <
+(
+    SELECT AVG(REGION_TOTAL)
+    FROM
+    (
+        SELECT SUM(SALES_AMOUNT) AS REGION_TOTAL
+        FROM assignment_ecommerce_orders
+        GROUP BY CITY
+    ) A
+);
+
+-- 34. Fetch customers whose sales increased continuously for 3 transactions.
+SELECT *
+FROM
+(
+    SELECT CUSTOMER_NAME,ORDER_DATE,SALES_AMOUNT,
+           LAG(SALES_AMOUNT,1)OVER(PARTITION BY CUSTOMER_NAME ORDER BY ORDER_DATE) AS PREV1,
+           LAG(SALES_AMOUNT,2)OVER(PARTITION BY CUSTOMER_NAME ORDER BY ORDER_DATE)AS PREV2
+
+    FROM assignment_ecommerce_orders
+) A
+WHERE SALES_AMOUNT > PREV1 AND PREV1 > PREV2;
+
+-- 35. Fetch customers whose current purchase doubled compared to previous purchase.
+SELECT *
+FROM
+(
+    SELECT CUSTOMER_NAME,ORDER_DATE,SALES_AMOUNT,
+           LAG(SALES_AMOUNT)OVER(PARTITION BY CUSTOMER_NAME ORDER BY ORDER_DATE) AS PREV_PURCHASE
+    FROM assignment_ecommerce_orders
+) A
+WHERE SALES_AMOUNT >= PREV_PURCHASE * 2;
+
+-- 36. Fetch categories whose average sales are above overall category average.
+SELECT CATEGORY,AVG(SALES_AMOUNT) AS CATEGORY_AVG
+FROM assignment_ecommerce_orders
+GROUP BY CATEGORY
+HAVING CATEGORY_AVG >
+(
+    SELECT AVG(SALES_AMOUNT)
+    FROM assignment_ecommerce_orders
+);
+
+-- 37. Fetch customers whose purchases are continuously decreasing for 3 transactions.
+SELECT *
+FROM
+(
+    SELECT CUSTOMER_NAME,ORDER_DATE,SALES_AMOUNT,
+           LAG(SALES_AMOUNT,1) OVER(PARTITION BY CUSTOMER_NAME ORDER BY ORDER_DATE) AS PREV1,
+           LAG(SALES_AMOUNT,2) OVER(PARTITION BY CUSTOMER_NAME ORDER BY ORDER_DATE) AS PREV2
+    FROM assignment_ecommerce_orders
+) A
+WHERE SALES_AMOUNT < PREV1 AND PREV1 < PREV2;
+
+-- 38. Fetch months where revenue dropped compared to previous month.
+SELECT *
+FROM
+(
+    SELECT MONTH(ORDER_DATE) AS MONTH_NUM,SUM(SALES_AMOUNT) AS MONTHLY_SALES,
+           LAG(SUM(SALES_AMOUNT)) OVER(ORDER BY MONTH(ORDER_DATE)) AS PREV_MONTH
+    FROM assignment_ecommerce_orders
+    GROUP BY MONTH(ORDER_DATE)
+) A
+WHERE MONTHLY_SALES < PREV_MONTH;
+
+-- 39. Fetch products whose profit is below product category average profit.
+SELECT *
+FROM
+(
+    SELECT PRODUCT_NAME,CATEGORY,PROFIT,
+           ROUND(AVG(PROFIT) OVER(PARTITION BY CATEGORY)) AS CATEGORY_AVG
+    FROM assignment_ecommerce_orders
+) A
+WHERE PROFIT < CATEGORY_AVG;
+
+-- 40. CALCULATE MOM, YOY, QOQ, WOW GROWTH IN SEPERATE QUERIES EACH
+-- MOM GROWTH
+SELECT 
+    MONTH(ORDER_DATE) AS MONTH_NUM,SUM(SALES_AMOUNT) AS MONTHLY_SALES,
+    LAG(SUM(SALES_AMOUNT)) OVER(ORDER BY MONTH(ORDER_DATE))AS PREV_MONTH,
+    SUM(SALES_AMOUNT) - LAG(SUM(SALES_AMOUNT)) OVER(ORDER BY MONTH(ORDER_DATE)) AS GROWTH
+FROM assignment_ecommerce_orders
+GROUP BY MONTH(ORDER_DATE);
+
+-- YOY GROWTH
+SELECT YEAR(ORDER_DATE) AS YEAR_NUM,SUM(SALES_AMOUNT) AS YEARLY_SALES,
+      LAG(SUM(SALES_AMOUNT)) OVER(ORDER BY YEAR(ORDER_DATE)) AS PREV_YEAR_SALES
+FROM assignment_ecommerce_orders
+GROUP BY YEAR(ORDER_DATE);
+
+-- QOQ GROWTH
+SELECT QUARTER_NUM,QUARTER_SALES,
+               LAG(QUARTER_SALES) OVER(ORDER BY QUARTER_NUM) AS PREV_QUARTER_SALES
+FROM
+(
+    SELECT QUARTER(ORDER_DATE) AS QUARTER_NUM,SUM(SALES_AMOUNT) AS QUARTER_SALES
+    FROM assignment_ecommerce_orders
+    GROUP BY QUARTER(ORDER_DATE)
+) A;
+
+-- WOW GROWTH
+SELECT WEEK(ORDER_DATE) AS WEEK_NUM,SUM(SALES_AMOUNT) AS WEEKLY_SALES
+FROM assignment_ecommerce_orders
+GROUP BY WEEK(ORDER_DATE);
+
+-- 41. Find inactive customers for last 60 days.
+SELECT DISTINCT CUSTOMER_NAME
+FROM assignment_ecommerce_orders
+WHERE CUSTOMER_NAME NOT IN
+(
+    SELECT CUSTOMER_NAME
+    FROM assignment_ecommerce_orders
+    WHERE ORDER_DATE >= CURDATE() - INTERVAL 60 DAY
+);
+
+-- 42. Find customers with highest return orders.
+SELECT CUSTOMER_NAME,
+       COUNT(*) AS RETURN_ORDERS
+FROM assignment_ecommerce_orders
+WHERE ORDER_STATUS = 'Returned'
+GROUP BY CUSTOMER_NAME
+ORDER BY RETURN_ORDERS DESC;
+
+-- 43. Find payment mode contributing highest revenue.
+SELECT PAYMENT_MODE,
+       SUM(SALES_AMOUNT) AS TOTAL_REVENUE
+FROM assignment_ecommerce_orders
+GROUP BY PAYMENT_MODE
+ORDER BY TOTAL_REVENUE DESC
+LIMIT 1;
+
+-- 44. Find state-wise top category.
+SELECT *
+FROM
+(
+    SELECT STATE_NAME,CATEGORY,SUM(SALES_AMOUNT) AS TOTAL_SALES,
+           RANK() OVER(PARTITION BY STATE_NAME ORDER BY SUM(SALES_AMOUNT) DESC) AS RNK
+    FROM assignment_ecommerce_orders
+    GROUP BY STATE_NAME, CATEGORY
+) A
+WHERE RNK = 1;
+
+
+-- 45. Find monthly profit trend.
+SELECT 
+    MONTH(ORDER_DATE) AS MONTH_NUM,
+    SUM(PROFIT) AS MONTHLY_PROFIT
+FROM assignment_ecommerce_orders
+GROUP BY MONTH(ORDER_DATE);
+
+-- Find lowest performing city.
+SELECT 
+    CITY,SUM(SALES_AMOUNT) AS TOTAL_SALES
+FROM assignment_ecommerce_orders
+GROUP BY CITY
+ORDER BY TOTAL_SALES
+LIMIT 1;
+
+-- Find customer retention month-wise.
+SELECT 
+    MONTH(ORDER_DATE) AS MONTH_NUM,
+    COUNT(DISTINCT CUSTOMER_NAME) AS RETAINED_CUSTOMERS
+FROM assignment_ecommerce_orders
+GROUP BY MONTH(ORDER_DATE);
+
+-- Find repeat purchase ratio.
+SELECT 
+(
+COUNT(DISTINCT CUSTOMER_NAME) /
+(SELECT COUNT(DISTINCT CUSTOMER_NAME)
+FROM assignment_ecommerce_orders)
+) * 100 AS REPEAT_PURCHASE_RATIO
+FROM assignment_ecommerce_orders
+GROUP BY CUSTOMER_NAME
+HAVING COUNT(*) > 1;
+
+-- Find quarterly growth trend.
+SELECT QUARTER(ORDER_DATE) AS QUARTER_NUM, 
+      SUM(SALES_AMOUNT) AS QUARTER_SALES,
+    LAG(SUM(SALES_AMOUNT)) OVER(ORDER BY QUARTER(ORDER_DATE)) AS PREV_QUARTER_SALES
+FROM assignment_ecommerce_orders
+GROUP BY QUARTER(ORDER_DATE);
+
+-- Find customers purchasing across multiple categories.
+SELECT 
+    CUSTOMER_NAME,COUNT(DISTINCT CATEGORY) AS TOTAL_CATEGORIES
+FROM assignment_ecommerce_orders
+GROUP BY CUSTOMER_NAME
+HAVING COUNT(DISTINCT CATEGORY) > 1;
+
+-- Find category contribution %
+SELECT CATEGORY,SUM(SALES_AMOUNT) AS CATEGORY_SALES,
+    ROUND(SUM(SALES_AMOUNT) * 100 /
+    (SELECT SUM(SALES_AMOUNT)
+     FROM assignment_ecommerce_orders),2)
+     AS CONTRIBUTION_PERCENT
+FROM assignment_ecommerce_orders
+GROUP BY CATEGORY;
+
+-- Find fastest growing category.
+SELECT *
+FROM
+(
+    SELECT CATEGORY,MONTH(ORDER_DATE) AS MONTH_NUM,SUM(SALES_AMOUNT) AS MONTHLY_SALES,
+        SUM(SALES_AMOUNT) - LAG(SUM(SALES_AMOUNT)) OVER(PARTITION BY CATEGORY ORDER BY MONTH(ORDER_DATE)) AS GROWTH
+    FROM assignment_ecommerce_orders
+    GROUP BY CATEGORY, MONTH(ORDER_DATE)
+) A
+ORDER BY GROWTH DESC
+LIMIT 1;
+
+-- Find customers with highest average order value.
+SELECT CUSTOMER_NAME,ROUND(AVG(SALES_AMOUNT)) AS AVG_ORDER_VALUE
+FROM assignment_ecommerce_orders
+GROUP BY CUSTOMER_NAME
+ORDER BY AVG_ORDER_VALUE DESC;
+
+-- Find customers whose order value continuously decreases.
+SELECT *
+FROM
+(
+    SELECT CUSTOMER_NAME,ORDER_DATE,SALES_AMOUNT,
+        LAG(SALES_AMOUNT,1)OVER(PARTITION BY CUSTOMER_NAME ORDER BY ORDER_DATE) AS PREV1,
+        LAG(SALES_AMOUNT,2)OVER(PARTITION BY CUSTOMER_NAME ORDER BY ORDER_DATE) AS PREV2
+    FROM assignment_ecommerce_orders
+) A
+WHERE SALES_AMOUNT < PREV1 AND PREV1 < PREV2;
+
+-- Find most profitable product.
+SELECT PRODUCT_NAME,SUM(PROFIT) AS TOTAL_PROFIT
+FROM assignment_ecommerce_orders
+GROUP BY PRODUCT_NAME
+ORDER BY TOTAL_PROFIT DESC
+LIMIT 1;
+
+-- Find least profitable category.
+SELECT CATEGORY,SUM(PROFIT) AS TOTAL_PROFIT
+FROM assignment_ecommerce_orders
+GROUP BY CATEGORY
+ORDER BY TOTAL_PROFIT
+LIMIT 1;
+
+-- Find top 5 profitable customers.
+SELECT CUSTOMER_NAME,
+    SUM(PROFIT) AS TOTAL_PROFIT
+FROM assignment_ecommerce_orders
+GROUP BY CUSTOMER_NAME
+ORDER BY TOTAL_PROFIT DESC
+LIMIT 5;
+
+-- Find cancelled order percentage.
+SELECT ROUND((SUM(
+            CASE WHEN ORDER_STATUS = 'Cancelled' THEN 1 ELSE 0
+END)/COUNT(*)) * 100,2) AS CANCELLED_PERCENTAGE
+FROM assignment_ecommerce_orders;
+
+-- Find return order percentage month-wise.
+SELECT MONTH(ORDER_DATE) AS MONTH_NUM,
+    ROUND((SUM(
+             CASE WHEN ORDER_STATUS = 'Returned' THEN 1 ELSE 0
+END)/COUNT(*)) * 100,2) AS RETURN_PERCENTAGE
+FROM assignment_ecommerce_orders
+GROUP BY MONTH(ORDER_DATE);
+
+-- Find Second Highest Purchase of Every Customer
+SELECT *
+FROM
+(
+    SELECT CUSTOMER_NAME,SALES_AMOUNT,
+        DENSE_RANK() OVER(PARTITION BY CUSTOMER_NAME ORDER BY SALES_AMOUNT DESC) AS RNK
+    FROM assignment_ecommerce_orders
+) A
+WHERE RNK = 2;
+
+-- Find First Purchase AMOUNT AND LAST PURCHASE AMOUNT of Every Customer
+SELECT CUSTOMER_NAME,
+    FIRST_VALUE(SALES_AMOUNT) OVER(PARTITION BY CUSTOMER_NAME ORDER BY ORDER_DATE) AS FIRST_PURCHASE,
+    LAST_VALUE(SALES_AMOUNT)OVER(PARTITION BY CUSTOMER_NAME ORDER BY ORDER_DATE ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS LAST_PURCHASE
+FROM assignment_ecommerce_orders;
+
+
+
+
+
